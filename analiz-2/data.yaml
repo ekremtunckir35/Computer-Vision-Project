@@ -1,0 +1,12 @@
+names:
+- human
+nc: 1
+roboflow:
+  license: CC BY 4.0
+  project: analiz-ssev8
+  url: https://universe.roboflow.com/myworkspace-bkrfh/analiz-ssev8/dataset/2
+  version: 2
+  workspace: myworkspace-bkrfh
+test: test/images
+train: train/images
+val: valid/images
