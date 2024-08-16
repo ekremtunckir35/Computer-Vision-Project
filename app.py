@@ -3,106 +3,139 @@ import cv2
 import time
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 from ultralytics import YOLO
-from roboflow import Roboflow
 
-# Streamlit başlığı ve açıklaması
+# Sayfa başlığı ve açıklama
 st.title("Mekansal Birey Kalma Süresi Analizi")
 st.write("""
-Bu uygulama, belirli bir video üzerinde bireylerin kalma sürelerini analiz eder ve bu bilgiyi görselleştirir.
+Bu uygulama, belirli bir alanda bireylerin ne kadar süre kaldığını ve bu sürelerin mekânsal dağılımını analiz eder. YOLOv8 modeli kullanılarak bireylerin tespiti yapılır ve her bireyin kalma süresi hesaplanır.
+Mekansal Birey Kalma Süresi Analizi, belirli bir alanda bireylerin ne kadar süre kaldığını ve bu sürelerin mekânsal dağılımını inceleyen bir veri analiz yöntemidir. Bu tür bir analiz, genellikle aşağıdaki amaçlarla yapılır:
+Mekansal Hareketlilik Anlamlandırma: Analiz, belirli bir alandaki bireylerin hareketlilik paternlerini anlamaya yardımcı olur. Örneğin, bir alışveriş merkezi, park, havaalanı gibi alanlarda insanların hangi bölgelerde daha uzun süre kaldığını ve hangi bölgeleri hızlıca geçtiklerini tespit edebilir.
+
+Yoğunluk ve Kalabalık Yönetimi: Bireylerin mekanda ne kadar süre kaldığını analiz ederek, yoğunluk alanları tespit edilebilir. Bu bilgi, kalabalık yönetimi, kaynakların daha verimli kullanımı ve hizmetlerin optimizasyonu için kullanılabilir.
+
+Müşteri Davranışlarını Anlamak: Perakende sektöründe, müşteri davranışlarını anlamak için bu tür analizler yapılır. Örneğin, bir mağazada hangi reyonlarda müşterilerin daha uzun süre vakit geçirdiği veya hangi alanların daha az ilgi çektiği bu analizle tespit edilebilir.
+
+Guvenlik ve Gözetim: Özellikle havaalanları, tren istasyonları gibi yüksek güvenlikli bölgelerde, bireylerin mekânsal kalış sürelerinin analiz edilmesi, güvenlik politikalarının ve gözetim stratejilerinin iyileştirilmesine yardımcı olabilir.
+Bu tür bir analizde, kişileri tespit etmek ve takip etmek için genellikle nesne tespiti algoritmaları ve bilgisayarla görme teknikleri kullanılır.
+
+Gerekenler:
+•	Python kurulu bir ortam (tercihen Jupyter Notebook).
+•	OpenCV ve YOLOv8 kütüphaneleri yüklü olmalı.
+•	Roboflow'dan eğitilmiş bir YOLOv8 modeli.
+
 """)
 
-# Roboflow API anahtarıyla bağlanma
-rf = Roboflow(api_key="0i8v0fEn4mty6Zt83ACV")
-project = rf.workspace("myworkspace-bkrfh").project("analiz-ssev8")
-version = project.version(2)
-dataset = version.download("yolov8")
+# Bölümler arasında gezinti
+section = st.sidebar.selectbox("Bölüm Seçin", ["Giriş", "Analiz", "Sonuçlar ve Rapor", "Video Analizi"])
 
-# YOLOv8 Modelini Yükleme
-model = YOLO("yolov8n.pt")
+# Giriş Bölümü
+if section == "Giriş":
+    st.header("Giriş")
+    st.write("""
+    Bu analiz, özellikle yoğun alanlarda bireylerin hareketliliğini ve kalma sürelerini anlamaya yardımcı olur. 
+    Güvenlik, yoğunluk yönetimi ve müşteri davranışlarını anlama gibi çeşitli alanlarda uygulanabilir.
+    """)
 
-# Video yükleme
-video_file = st.file_uploader("Bir video dosyası yükleyin", type=["mp4", "avi", "mov"])
+# Analiz Bölümü
+elif section == "Analiz":
+    st.header("Analiz")
+    st.write("""
+    YOLOv8 nesne tespiti modeli kullanılarak bireylerin video üzerinden tespiti yapılır ve bu bireylerin belirli bir alanda ne kadar süre kaldıkları hesaplanır.
+    """)
 
-if video_file:
-    st.video(video_file)
+    # Video Yükleme ve İşleme
+    uploaded_video = st.file_uploader("Bir video yükleyin", type=["mp4", "avi"])
 
-    cap = cv2.VideoCapture(video_file.name)
+    if uploaded_video is not None:
+        video_bytes = uploaded_video.read()
 
-    stay_times = {}
-    stay_durations = {}
+        # OpenCV ile video işleme
+        st.video(video_bytes)  # Videoyu göster
 
-    st.write("Video işleniyor, lütfen bekleyin...")
+        # Analiz işlemlerini başlat
+        st.write("Video işleniyor...")
 
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
+        # YOLO modelini yükle
+        model = YOLO("../../yolov8n.pt")
 
-        # YOLO ile nesne tespiti yap
-        results = model(frame)
+        # Video üzerinde nesne tespiti ve kalma süresi analizi
+        cap = cv2.VideoCapture(uploaded_video.name)
 
-        for result in results:
-            boxes = result.boxes
-            for box in boxes:
-                # Her tespit için bbox verilerini al
-                x1, y1, x2, y2 = box.xyxy[0].tolist()
-                id = box.id
+        stay_times = {}
+        stay_durations = {}
 
-                # Bireyin ID'sini belirle
-                if id not in stay_times:
-                    stay_times[id] = time.time()  # İlk tespit zamanı
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-                # Bu alanda kalma süresini hesapla
-                stay_duration = time.time() - stay_times[id]
-                stay_durations[id] = stay_duration  # Süreyi kaydet
+            # YOLO ile nesne tespiti
+            results = model(frame)
 
-                # Görselleştirme
-                cv2.putText(frame, f"ID: {id}, Time: {stay_duration:.2f}s", (int(x1), int(y1)-10), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+            for result in results:
+                boxes = result.boxes
+                for box in boxes:
+                    x1, y1, x2, y2 = box.xyxy[0].tolist()
+                    id = box.id
 
-        # Frame'i göster
-        st.image(frame, channels="BGR")
-    
-    cap.release()
+                    if id not in stay_times:
+                        stay_times[id] = time.time()
 
-    st.write("Analiz Tamamlandı!")
+                    stay_duration = time.time() - stay_times[id]
+                    stay_durations[id] = stay_duration
 
-    # Kalma sürelerinin sonuçlarını görselleştirme
-    st.subheader("Kalma Süresi Analizi Sonuçları")
+                    # Görselleştirme
+                    cv2.putText(frame, f"ID: {id}, Time: {stay_duration:.2f}s", (int(x1), int(y1) - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                    cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
 
-    # Bireylerin toplam kalma sürelerini yazdır
-    for id, duration in stay_durations.items():
-        st.write(f"Birey {id} toplamda {duration:.2f} saniye kaldı.")
+            st.image(frame, channels="BGR")  # Kareyi Streamlit'te göster
 
-    # Toplam kalma süresini hesapla
-    total_duration = np.sum(list(stay_durations.values()))
-    st.write(f"Tüm bireylerin toplamda {total_duration:.2f} saniye kaldığı tespit edildi.")
+        cap.release()
 
-    # Görselleştirme: Kalma süresi dağılımı
-    st.subheader("Kalma Süresi Dağılımı")
-    durations = list(stay_durations.values())
-    plt.hist(durations, bins=5)
-    plt.xlabel('Toplam Kalma Süresi (saniye)')
-    plt.ylabel('Frekans')
-    plt.title('Kalma Süresi Dağılımı')
-    st.pyplot(plt)
+        # Kalma sürelerini göster
+        st.write("Bireylerin kalma süreleri:")
+        for id, duration in stay_durations.items():
+            st.write(f"Birey {id} toplamda {duration:.2f} saniye kaldı.")
 
-    # Bölgesel analiz ve ısı haritası
-    st.subheader("Bölgesel Kalma Süresi Analizi")
+# Sonuçlar ve Rapor Bölümü
+elif section == "Sonuçlar ve Rapor":
+    st.header("Sonuçlar ve Rapor")
+    st.write("""
+    Bireylerin hangi bölgelerde daha uzun süre kaldığı ve hangi alanların daha yoğun olduğu bu analizle belirlenmiştir. 
+    Bu tür analizler, güvenlik ve yoğunluk yönetimi açısından önemlidir.
+    """)
 
+    # Örnek grafik oluşturma
+    st.write("Bölgelerde Kalma Süresi Analizi")
     zones = ["Zone 1", "Zone 2", "Zone 3", "Zone 4"]
-    zone_durations = [np.random.rand() * 100 for _ in zones]  # Örnek veri, kendi bölgesel analizinizi ekleyin
+    durations = [30, 90, 0, 0]
 
-    plt.bar(zones, zone_durations)
+    plt.bar(zones, durations)
     plt.xlabel('Bölgeler')
     plt.ylabel('Toplam Kalma Süresi (saniye)')
     plt.title('Bölgelerde Kalma Süresi Analizi')
     st.pyplot(plt)
 
-    # Isı haritası
-    data = np.array(zone_durations).reshape(1, -1)
-    sns.heatmap(data, annot=True, xticklabels=zones, yticklabels=['Kalma Süresi'])
-    st.pyplot(plt)
+    st.write(""" Grafikteki dağılım incelendiğinde, yatay eksende (X ekseni) toplam kalma süresi (saniye cinsinden) yer almakta ve dikey eksende (Y ekseni) ise frekans (birey sayısı) gösterilmektedir. Görselde yalnızca bir adet sütun bulunmakta ve bu sütun, X ekseninde sıfır değerine karşılık gelmektedir.
+Bu durum, verilerdeki kalma süresinin neredeyse sıfır olduğunu, yani analiz edilen bireylerin tespit edilen alanda çok kısa bir süre kaldıklarını veya tespit edilemediklerini göstermektedir. Ayrıca, kalma süresinin dağılımında çeşitlilik olmadığını da gözlemleyebiliriz; tüm veriler aynı noktada toplanmış.
+Muhtemel Nedenler:
+Tespit Edilen Bireylerin Hareketliliği: Bireyler çok hızlı hareket ediyor olabilir, bu da tespit edilen kalma süresini minimum seviyede tutmuş olabilir.
+Algoritmanın Yetersizliği: YOLO modelinin tespit yapamaması veya hatalı tespit yapması nedeniyle bireylerin kalma süreleri sıfır olarak kaydedilmiş olabilir.
+Veri Setinin Doğası: Veri seti, çok kısa süreli video karelerinden oluşuyor olabilir ve bu durum, tespit edilen kalma sürelerinin çok düşük olmasına yol açmış olabilir.
+Sonuç olarak, grafik bize bireylerin analiz edilen alanda neredeyse hiç vakit geçirmediğini gösteriyor.""")
+
+# Video Analizi Bölümü
+elif section == "Video Analizi":
+    st.header("Video Analizi")
+    st.write("""
+    Bu bölümde, video verisi üzerinden analiz yapılır. Bireylerin hangi bölgelerde daha uzun süre kaldığı belirlenir.
+    """)
+
+    # Video yükleme ve işleme
+    uploaded_video = st.file_uploader("Bir video yükleyin", type=["mp4", "avi"])
+
+    if uploaded_video is not None:
+        video_bytes = uploaded_video.read()
+        st.video(video_bytes)
